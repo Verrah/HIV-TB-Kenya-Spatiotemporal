@@ -18,7 +18,8 @@ This repository contains the data, code, and documentation supporting:
 | `pone_0234456_s004.csv` | TB new notifications and projected populations by county, 2012–2017 |
 | `pone_0234456_s001.R` | Original R analysis script |
 | `HIV_TB_Kenya_Analysis.Rmd` | Cleaned and fully documented R Markdown analysis script |
-| `HIV_TB_Kenya_Codebook.docx` | Variable-level codebook for all datasets and model indices |
+| `HIV_TB_Kenya_Codebook.pdf` | Codebook in ACM journal style (PDF) — all variables, derived measures, and model indices |
+| `HIV_TB_Kenya_Codebook.tex` | LaTeX source file for the codebook |
 
 ## How to Reproduce the Analysis
 
