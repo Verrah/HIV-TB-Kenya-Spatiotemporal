@@ -1,0 +1,899 @@
+---
+title: "Spatio-Temporal Analysis of HIV and Tuberculosis Co-Morbidity in Kenya"
+subtitle: "County-Level Bayesian Joint Disease Modelling, 2012–2017"
+author: "Verrah Otiende"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    number_sections: true
+    df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+# ── Global chunk options ──────────────────────────────────────────────────────
+knitr::opts_chunk$set(
+  echo      = TRUE,    # Show code in output
+  message   = FALSE,   # Suppress package messages
+  warning   = FALSE,   # Suppress warnings
+  fig.align = "center",
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+---
+
+# Overview
+
+This document presents a Bayesian spatio-temporal **joint disease model** for
+HIV and Tuberculosis (TB) across Kenya's **47 counties** from **2012 to 2017**.
+The analysis proceeds in five stages:
+
+1. **Data import** — load raw case counts and population projections
+2. **Indirect standardisation** — compute Standardised Incidence Ratios (SIRs)
+   for descriptive mapping
+3. **Spatial data preparation** — merge tabular data with county shapefiles
+4. **INLA model fitting** — fit a shared-component spatio-temporal Poisson model
+5. **Results extraction and visualisation** — spatial maps, temporal trends, and
+   space-time interaction probabilities
+
+---
+
+# Package Dependencies
+
+All packages are loaded here so that dependencies are transparent and the
+workspace can be reproduced in a single step.
+
+```{r packages}
+# ── Spatial data handling ─────────────────────────────────────────────────────
+library(sp)          # Spatial objects (SpatialPolygonsDataFrame)
+library(sf)          # Simple features (sf objects)
+library(rgdal)       # Read/write spatial data formats, including .shp
+library(spdep)       # Spatial dependence: weights, autocorrelation
+library(maptools)    # Map tools and spatial utilities
+library(spacetime)   # Space-time data structures
+
+# ── Mapping and visualisation ─────────────────────────────────────────────────
+library(maps)        # Base map plotting functions
+library(mapdata)     # High-resolution county boundary points
+library(RColorBrewer)# Colour palettes for choropleth maps
+library(lattice)     # Trellis graphics (used by spplot)
+library(latticeExtra)# Extensions to lattice (panel functions, etc.)
+library(gridExtra)   # Arrange multiple grid graphics on one page
+library(grid)        # Low-level grid graphics system
+library(car)         # Companion to Applied Regression (misc. plot helpers)
+
+# ── Epidemiological and statistical tools ─────────────────────────────────────
+library(epitools)    # Epidemiological tools (rate calculations)
+library(DCluster)    # Detection of spatial disease clusters
+library(stats)       # Base R statistical functions
+library(plotrix)     # Miscellaneous plot utilities
+
+# ── Bayesian spatio-temporal modelling ───────────────────────────────────────
+library(INLA)        # Integrated Nested Laplace Approximation
+
+# ── Reporting ─────────────────────────────────────────────────────────────────
+library(knitr)       # Dynamic report generation
+```
+
+---
+
+# Data Import
+
+## File Paths
+
+Update the paths in this single block to match your local directory structure.
+All subsequent code reads from these variables, so only this section needs
+to change when moving the project to a new machine.
+
+```{r file-paths}
+# ── User-defined paths (edit here only) ──────────────────────────────────────
+PATH_HIV <- "data/HIV_Data_2018.csv"
+PATH_TB  <- "data/TB_Data_2018.csv"
+PATH_SHP <- "data/County_Kenya/County.shp"
+```
+
+## Load Case Count Data
+
+```{r load-data}
+# Raw HIV new-diagnosis counts and projected populations, 2012–2017
+# Rows: 47 counties | Columns: County code, name, annual cases (HIV_YYYY),
+#                              annual population (PP_YYYY), totals
+HIV_data <- read.csv(PATH_HIV)
+
+# Raw TB notification counts and projected populations, 2012–2017
+# Same structure as HIV_data; County_ID plays the role of Sn.no
+TB_data  <- read.csv(PATH_TB)
+
+# Quick sanity check: both files should have 47 rows (one per county)
+stopifnot(nrow(HIV_data) == 47, nrow(TB_data) == 47)
+
+cat("HIV data: ", nrow(HIV_data), "counties,", ncol(HIV_data), "columns\n")
+cat("TB  data: ", nrow(TB_data),  "counties,", ncol(TB_data),  "columns\n")
+```
+
+---
+
+# Indirect Standardisation and SIR Computation
+
+Standardised Incidence Ratios (SIRs) are computed using **indirect
+standardisation**:
+
+$$
+\text{SIR}_{ic} = \frac{O_{ic}}{E_{ic}}, \quad
+E_{ic} = \bar{\lambda}_c \times \bar{P}_i
+$$
+
+where $O_{ic}$ is the observed count for county $i$ in period $c$,
+$\bar{\lambda}_c$ is the national crude rate for period $c$, and
+$\bar{P}_i = P_{i,\text{Total}} / 6$ is the county's average annual
+population (the *standard population*).
+
+## Standard Populations
+
+```{r standard-populations}
+# Average annual projected population across the six study years.
+# Used as the reference denominator when computing expected counts.
+standard.HIV <- HIV_data$PP_Total / 6
+standard.TB  <- TB_data$PP_Total  / 6
+```
+
+## National Crude Incidence Rates
+
+Rather than repeating the same expression six times, we compute all annual
+crude rates in a single vectorised step and store them in named vectors.
+
+```{r crude-rates}
+years <- 2012:2017   # Study period
+
+# --- HIV crude rates ---------------------------------------------------------
+# National crude rate = (total national cases) / (total national person-years)
+cruderate.HIV <- sapply(years, function(y) {
+  col_cases <- paste0("HIV_", y)
+  col_pop   <- paste0("PP_",  y)
+  sum(HIV_data[[col_cases]]) / sum(HIV_data[[col_pop]])
+})
+names(cruderate.HIV) <- years
+
+# Pooled rate across all six years
+cruderate.HIV_Total <- sum(HIV_data$HIV_Total) / sum(HIV_data$PP_Total)
+
+# --- TB crude rates ----------------------------------------------------------
+cruderate.TB <- sapply(years, function(y) {
+  col_cases <- paste0("TB_", y)
+  col_pop   <- paste0("PP_", y)
+  sum(TB_data[[col_cases]]) / sum(TB_data[[col_pop]])
+})
+names(cruderate.TB) <- years
+
+cruderate.TB_Total <- sum(TB_data$TB_Total) / sum(TB_data$PP_Total)
+
+# Print a summary table
+crude_summary <- data.frame(
+  Year          = years,
+  HIV_CrudeRate = cruderate.HIV,
+  TB_CrudeRate  = cruderate.TB
+)
+knitr::kable(crude_summary, digits = 6,
+             caption = "National annual crude incidence rates (cases per person-year)")
+```
+
+## Expected Counts
+
+```{r expected-counts}
+# Expected cases = national crude rate x county standard population.
+# Returns a 47-row matrix (counties x years) for each disease.
+
+# --- HIV expected counts -----------------------------------------------------
+expected.HIV <- sapply(years, function(y) {
+  cruderate.HIV[as.character(y)] * standard.HIV
+})
+colnames(expected.HIV) <- years   # columns = years, rows = counties
+
+expected.HIV_Total <- cruderate.HIV_Total * standard.HIV
+
+# --- TB expected counts ------------------------------------------------------
+expected.TB <- sapply(years, function(y) {
+  cruderate.TB[as.character(y)] * standard.TB
+})
+colnames(expected.TB) <- years
+
+expected.TB_Total <- cruderate.TB_Total * standard.TB
+```
+
+## SIR Computation (Continuous)
+
+```{r sir-continuous}
+# SIR_iy = observed_iy / expected_iy  (county i, year y)
+# Values > 1 indicate above-national-average burden.
+
+# --- HIV SIRs ----------------------------------------------------------------
+adj.HIV <- sapply(years, function(y) {
+  HIV_data[[paste0("HIV_", y)]] / expected.HIV[, as.character(y)]
+})
+colnames(adj.HIV) <- years
+
+adj.HIV.total <- HIV_data$HIV_Total / expected.HIV_Total
+
+# --- TB SIRs -----------------------------------------------------------------
+adj.TB <- sapply(years, function(y) {
+  TB_data[[paste0("TB_", y)]] / expected.TB[, as.character(y)]
+})
+colnames(adj.TB) <- years
+
+adj.TB.total <- TB_data$TB_Total / expected.TB_Total
+```
+
+## SIR Classification (Categorical)
+
+Continuous SIRs are discretised into four ordered categories for choropleth
+mapping. The same breakpoints are applied uniformly across all years and both
+diseases.
+
+```{r sir-categorical}
+# Breakpoints and labels applied to all year/disease combinations
+sir.breaks  <- c(0, 0.40, 0.70, 0.90, 6)
+sir.labels  <- c("0.00-0.40", "0.41-0.70", "0.71-0.99", "1.00+")
+
+# Helper: classify a numeric SIR vector into the four categories
+classify_sir <- function(x) {
+  cut(x, breaks = sir.breaks, include.lowest = TRUE, labels = sir.labels)
+}
+
+# --- HIV categorical SIRs ----------------------------------------------------
+adj_HIV_cat <- apply(adj.HIV, 2, classify_sir)   # 47 x 6 factor matrix
+colnames(adj_HIV_cat) <- paste0("adj_HIV_", years)
+
+adj_HIV_total_cat <- classify_sir(adj.HIV.total)
+
+# --- TB categorical SIRs -----------------------------------------------------
+adj_TB_cat <- apply(adj.TB, 2, classify_sir)
+colnames(adj_TB_cat) <- paste0("adj_TB_", years)
+
+adj_TB_total_cat <- classify_sir(adj.TB.total)
+```
+
+## Build the Consolidated Analysis Dataset
+
+```{r build-data-prop}
+# Flatten the matrix columns into individual named vectors so they can be
+# passed cleanly to data.frame().  Column names mirror the original script.
+
+# Observed counts
+obs_HIV <- setNames(as.data.frame(
+  sapply(years, function(y) HIV_data[[paste0("HIV_", y)]])),
+  paste0("obs.HIV", years))
+
+obs_TB  <- setNames(as.data.frame(
+  sapply(years, function(y) TB_data[[paste0("TB_", y)]])),
+  paste0("obs.TB", years))
+
+# Expected counts
+exp_HIV <- setNames(as.data.frame(expected.HIV), paste0("exp.HIV", years))
+exp_TB  <- setNames(as.data.frame(expected.TB),  paste0("exp.TB",  years))
+
+# Continuous SIRs
+sir_HIV <- setNames(as.data.frame(adj.HIV), paste0("adj.HIV.", years))
+sir_TB  <- setNames(as.data.frame(adj.TB),  paste0("adj.TB.",  years))
+
+# Categorical SIRs
+cat_HIV <- setNames(as.data.frame(adj_HIV_cat), paste0("adj_HIV_", years))
+cat_TB  <- setNames(as.data.frame(adj_TB_cat),  paste0("adj_TB_",  years))
+
+# Assemble into one wide data frame (one row per county)
+data_prop <- data.frame(
+  County.ID    = HIV_data$Sn.no,
+  County       = HIV_data$County,
+  obs_HIV,
+  obs.HIVtotal = HIV_data$HIV_Total,
+  obs_TB,
+  obs.TBtotal  = TB_data$TB_Total,
+  exp_HIV,
+  exp.HIVtotal = expected.HIV_Total,
+  exp_TB,
+  exp.TBtotal  = expected.TB_Total,
+  sir_HIV,
+  adj.HIV.total,
+  sir_TB,
+  adj.TB.total,
+  cat_HIV,
+  adj_HIV_total_cat,
+  cat_TB,
+  adj_TB_total_cat
+)
+
+cat("data_prop dimensions:", nrow(data_prop), "x", ncol(data_prop), "\n")
+```
+
+---
+
+# Spatial Data Preparation
+
+## Load and Align Shapefile
+
+```{r load-shapefile}
+# Read the Kenya county polygon shapefile.
+# The attribute table field "COUNTY" must match the County names in data_prop.
+kenya <- readOGR(PATH_SHP, verbose = FALSE)
+
+# Reorder data_prop rows to match the shapefile's county ordering.
+# This is essential before the merge so that spatial and attribute data align.
+shp_order <- match(kenya$COUNTY, data_prop$County)
+data_pop   <- data_prop[shp_order, ]
+
+cat("Shapefile counties matched:", sum(!is.na(shp_order)), "/ 47\n")
+if (any(is.na(shp_order))) {
+  warning("Unmatched counties: ",
+          paste(kenya$COUNTY[is.na(shp_order)], collapse = ", "))
+}
+```
+
+## Merge Shapefile with Attribute Data
+
+```{r merge-spatial}
+# Merge the SpatialPolygonsDataFrame with the reordered analysis data frame.
+# The resulting object (kenya.one) carries both geometry and all computed
+# SIR/expected-count columns.
+kenya.one  <- merge(kenya, data_pop, by.x = "COUNTY", by.y = "County")
+data.kenya <- attr(kenya.one, "data")
+
+cat("Merged spatial object has", nrow(data.kenya), "rows\n")
+```
+
+---
+
+# Descriptive SIR Maps (Pre-Model)
+
+These choropleth maps display the unadjusted (descriptive) SIR categories
+for each year, providing a visual overview of the disease burden distribution
+before the Bayesian model is fitted.
+
+## Colour Palette Setup
+
+```{r palette-setup}
+# Yellow-Orange-Red palette: low burden (yellow) → high burden (red)
+my.palette.yor <- brewer.pal(4, "YlOrRd")
+
+# Suppress axis lines for cleaner map appearance
+trellis.par.set(axis.line = list(col = NA))
+```
+
+## HIV SIR Maps (2012–2017)
+
+```{r hiv-sir-maps, fig.cap="Figure 1. HIV Standardised Incidence Ratio by county, 2012–2017. Categories: 0.00–0.40 (very low), 0.41–0.70 (low), 0.71–0.99 (moderate), 1.00+ (high burden)."}
+# Build one spplot panel per year and arrange in a 2x3 grid
+hiv_panels <- lapply(years, function(y) {
+  spplot(kenya.one,
+         zcol       = paste0("adj_HIV_", y),
+         col.regions = my.palette.yor,
+         colorkey   = list(space = "right", height = 1.0),
+         cuts       = 2,
+         main       = as.character(y),
+         par.settings = list(fontsize = list(text = 12)))
+})
+
+do.call(grid.arrange, c(hiv_panels, list(nrow = 2, ncol = 3)))
+```
+
+## TB SIR Maps (2012–2017)
+
+```{r tb-sir-maps, fig.cap="Figure 2. TB Standardised Incidence Ratio by county, 2012–2017."}
+tb_panels <- lapply(years, function(y) {
+  spplot(kenya.one,
+         zcol        = paste0("adj_TB_", y),
+         col.regions  = my.palette.yor,
+         colorkey    = list(space = "right", height = 1.0),
+         cuts        = 2,
+         main        = as.character(y),
+         par.settings = list(fontsize = list(text = 12)))
+})
+
+do.call(grid.arrange, c(tb_panels, list(nrow = 2, ncol = 3)))
+```
+
+---
+
+# INLA Model: Bayesian Joint Spatio-Temporal Analysis
+
+## Spatial Adjacency Graph
+
+The spatial neighbourhood structure is derived directly from the county
+shapefile using queen-contiguity (shared boundary or vertex).
+
+```{r adjacency-graph}
+# Build neighbourhood list from polygon boundaries
+adj_graph <- poly2nb(kenya.one)
+
+# Write the INLA-format adjacency file to the working directory
+nb2INLA("kenya.graph", adj_graph)
+kenya.adj <- file.path(getwd(), "kenya.graph")
+
+cat("Number of counties:", length(adj_graph), "\n")
+cat("Average number of neighbours:",
+    round(mean(sapply(adj_graph, length)), 2), "\n")
+```
+
+## Reshape Data to Long Format
+
+INLA requires the data in **long format**: one row per county × year × disease
+combination (47 × 6 × 2 = 564 rows total).
+
+```{r reshape-long}
+# ── Step 1: Extract vectors from data_pop by column position ─────────────────
+# Column positions correspond to the ordering established when building data_prop.
+# HIV observed/expected: columns 3–8 and 17–22 (years 2012–2017)
+# TB  observed/expected: columns 10–15 and 24–29
+# SIR values:           columns 31–36 (HIV), 38–43 (TB)
+observed.HIV  <- as.vector(as.matrix(data_pop[, paste0("obs.HIV", years)]))
+observed.TB   <- as.vector(as.matrix(data_pop[, paste0("obs.TB",  years)]))
+expected.HIV.v <- as.vector(as.matrix(data_pop[, paste0("exp.HIV", years)]))
+expected.TB.v  <- as.vector(as.matrix(data_pop[, paste0("exp.TB",  years)]))
+adj.HIV.rate  <- as.vector(as.matrix(data_pop[, paste0("adj.HIV.", years)]))
+adj.TB.rate   <- as.vector(as.matrix(data_pop[, paste0("adj.TB.",  years)]))
+
+# ── Step 2: Build the county × year joint data frame ─────────────────────────
+n_counties <- nrow(data_pop)   # 47
+
+Year.vec   <- rep(years, each = n_counties)   # 282 elements
+County.vec <- as.factor(rep(data_pop[, 1], length(years)))
+
+Joint_data <- data.frame(
+  County.ID = as.numeric(County.vec),
+  Year.ID   = Year.vec,
+  O.HIV     = observed.HIV,
+  O.TB      = observed.TB,
+  E.HIV     = expected.HIV.v,
+  E.TB      = expected.TB.v,
+  SIR.HIV   = adj.HIV.rate,
+  SIR.TB    = adj.TB.rate
+)
+
+# ── Step 3: Stack HIV and TB rows (564-row data frame) ────────────────────────
+n.st <- nrow(Joint_data)   # 282 county-year units per disease
+
+data <- data.frame(
+  County.ID      = rep(Joint_data$County.ID, 2),
+  Year           = rep(Joint_data$Year.ID,   2),
+  Year.ID        = rep(Joint_data$Year.ID,   2),
+  County.Year.ID = rep(seq_len(n.st),        2)
+)
+
+data$Expected <- with(Joint_data, c(E.HIV, E.TB))
+data$Observed <- with(Joint_data, c(O.HIV, O.TB))
+data$Disease  <- rep(c("HIV", "TB"), each = n.st)
+
+cat("Long-format data: ", nrow(data), "rows x", ncol(data), "columns\n")
+```
+
+## Index Construction
+
+INLA identifies random effects through integer indices. Disease-specific effects
+use NA for the other disease's rows; shared effects use a single index for both.
+
+```{r build-indices}
+# ── Spatial index (1–47, recycled across years) ───────────────────────────────
+data$sp.idx <- rep(1:n_counties, length(years) * 2)
+
+# ── Temporal index (1 = 2012, ..., 6 = 2017) ─────────────────────────────────
+data$tm.idx <- data$Year - 2011
+
+# ── Disease index (1 = HIV, 2 = TB) ──────────────────────────────────────────
+data$dis.idx  <- rep(1:2, each = n.st)
+data$intercept <- as.factor(data$dis.idx)   # Disease-specific intercepts
+
+# ── Space-time interaction index ──────────────────────────────────────────────
+data$sp.tm.idx <- rep(seq_len(n.st), 2)
+
+# ── Shared (dummy) indices — active for ALL rows ──────────────────────────────
+# sp.dum and tm.dum are left NA here; they will be filled via the copy mechanism
+data$sp.dum    <- NA                         # Shared spatial effect
+data$tm.dum    <- NA                         # Shared temporal effect
+data$sp.tm.dum <- data$County.Year.ID        # Shared space-time interaction
+
+# ── Disease-specific spatial indices (NA for the other disease) ───────────────
+data$sp.1  <- ifelse(data$dis.idx == 1, data$sp.idx, NA)   # HIV spatial
+data$sp.2  <- ifelse(data$dis.idx == 2, data$sp.idx, NA)   # TB  spatial
+
+# Alias: INLA formula references sp.idx1 / sp.idx2
+data$sp.idx1 <- data$sp.1
+data$sp.idx2 <- data$sp.2
+
+# ── Disease-specific temporal indices ─────────────────────────────────────────
+data$tm.1  <- ifelse(data$dis.idx == 1, data$tm.idx, NA)   # HIV temporal
+data$tm.2  <- ifelse(data$dis.idx == 2, data$tm.idx, NA)   # TB  temporal
+
+data$tm.idx1 <- data$tm.1
+data$tm.idx2 <- data$tm.2
+
+# ── Disease-specific space-time indices ───────────────────────────────────────
+data$sp.tm.1  <- ifelse(data$dis.idx == 1, data$sp.tm.idx, NA)
+data$sp.tm.2  <- ifelse(data$dis.idx == 2, data$sp.tm.idx, NA)
+
+data$sp.tm.idx1 <- data$sp.tm.1
+data$sp.tm.idx2 <- data$sp.tm.2
+
+cat("Index summary (first 6 rows):\n")
+print(head(data[, c("County.ID","Year","Disease","dis.idx","sp.idx",
+                    "tm.idx","sp.tm.idx")]))
+```
+
+## Adjacency Matrices
+
+```{r adjacency-matrices}
+# ── Spatial adjacency (47 x 47 binary queen-contiguity matrix) ────────────────
+w.sp <- as(nb2mat(adj_graph, style = "B", zero.policy = TRUE), "Matrix")
+
+# ── Temporal adjacency (6 x 6 first-order random-walk structure) ──────────────
+# Each year connected only to its immediate predecessor and successor
+n_years <- length(years)   # 6
+w.tm    <- Diagonal(n_years, x = 0)   # Start with zero diagonal
+
+# Set off-diagonal neighbours
+w.tm[1, 2]           <- 1   # 2012 -> 2013
+w.tm[n_years, n_years - 1] <- 1   # 2017 -> 2016
+
+for (i in 2:(n_years - 1)) {
+  w.tm[i, i - 1] <- 1
+  w.tm[i, i + 1] <- 1
+}
+
+cat("Spatial adjacency matrix: ", nrow(w.sp), "x", ncol(w.sp), "\n")
+cat("Temporal adjacency matrix:", nrow(w.tm), "x", ncol(w.tm), "\n")
+```
+
+## Prior Specifications
+
+```{r priors}
+# ── Log-Gamma prior on all precision hyperparameters ─────────────────────────
+# Shape = 0.5, rate = 0.0005 → weakly informative, allows large variances.
+# Applied to: spatial (Besag), temporal (Besag), space-time (IID) effects.
+prior.prec <- list(prior   = "loggamma",
+                   param   = c(0.5, 0.0005),
+                   initial = 0)
+
+# ── Normal prior on copy-effect scaling coefficients (beta) ──────────────────
+# Mean 0, precision 1/5.9 ≈ 0.169 (sd ≈ 2.43).
+# Range constrained to (0, Inf) to ensure positive association between diseases.
+prior.beta.s   <- list(prior = "normal", param = c(0, 1/5.9),
+                       fixed = FALSE, initial = 0.01)   # Spatial copy beta
+prior.beta.t   <- list(prior = "normal", param = c(0, 1/5.9),
+                       fixed = FALSE, initial = 0.01)   # Temporal copy beta
+prior.beta.s.t <- list(prior = "normal", param = c(0, 1/5.9),
+                       fixed = FALSE, initial = 0.01)   # Space-time copy beta
+
+# Model scaling flag (FALSE = do not scale models to unit variance)
+inla.scale <- FALSE
+```
+
+## Model Formula
+
+The model is a **shared-component spatio-temporal Poisson model** with:
+
+- Disease-specific spatial effects (Besag intrinsic CAR)
+- A shared spatial effect copied to each disease with a scaling beta
+- Disease-specific temporal effects (Besag on the first-order RW graph)
+- A shared temporal effect with disease-specific copy betas
+- Disease-specific space-time IID interactions
+- A shared space-time IID interaction with copy betas
+
+```{r model-formula}
+formula <- Observed ~ -1 + intercept +
+
+  # ── Disease-specific spatial effects (intrinsic CAR) ─────────────────────
+  f(sp.idx1, model = "besag", graph = w.sp,
+    scale.model = inla.scale, hyper = list(prec = prior.prec)) +
+  f(sp.idx2, model = "besag", graph = w.sp,
+    scale.model = inla.scale, hyper = list(prec = prior.prec)) +
+
+  # ── Shared spatial effect + disease-specific copies ───────────────────────
+  f(sp.dum,  model = "besag", graph = w.sp,
+    scale.model = inla.scale, hyper = list(prec = prior.prec)) +
+  f(sp.1, copy = "sp.dum", range = c(0, Inf),
+    hyper = list(beta = prior.beta.s)) +
+  f(sp.2, copy = "sp.dum", range = c(0, Inf),
+    hyper = list(beta = prior.beta.s)) +
+
+  # ── Disease-specific temporal effects (first-order RW) ────────────────────
+  f(tm.idx1, model = "besag", graph = w.tm,
+    scale.model = inla.scale, hyper = list(prec = prior.prec)) +
+  f(tm.idx2, model = "besag", graph = w.tm,
+    scale.model = inla.scale, hyper = list(prec = prior.prec)) +
+
+  # ── Shared temporal effect + disease-specific copies ─────────────────────
+  f(tm.dum,  model = "besag", graph = w.tm,
+    scale.model = inla.scale, hyper = list(prec = prior.prec)) +
+  f(tm.1, copy = "tm.dum", range = c(0, Inf),
+    hyper = list(beta = prior.beta.t)) +
+  f(tm.2, copy = "tm.dum", range = c(0, Inf),
+    hyper = list(beta = prior.beta.t)) +
+
+  # ── Disease-specific space-time IID interactions ──────────────────────────
+  f(sp.tm.idx1, model = "iid", hyper = list(prec = prior.prec)) +
+  f(sp.tm.idx2, model = "iid", hyper = list(prec = prior.prec)) +
+
+  # ── Shared space-time IID interaction + disease-specific copies ───────────
+  f(sp.tm.dum,  model = "iid", hyper = list(prec = prior.prec)) +
+  f(sp.tm.1, copy = "sp.tm.dum", range = c(0, Inf),
+    hyper = list(beta = prior.beta.s.t)) +
+  f(sp.tm.2, copy = "sp.tm.dum", range = c(0, Inf),
+    hyper = list(beta = prior.beta.s.t))
+```
+
+## Model Fitting
+
+```{r fit-model, cache=TRUE}
+# Fit the Bayesian joint model using INLA.
+# cache=TRUE means this chunk is only re-run when its code or dependencies change.
+#
+# control.compute: request DIC (model comparison), CPO (leave-one-out), and
+#                  full config (needed for marginal sampling).
+# control.inla:    Laplace strategy with 21 integration points for accuracy.
+
+model.inla <- inla(
+  formula,
+  family            = "poisson",
+  data              = data,
+  E                 = Expected,
+  control.predictor = list(compute = TRUE),
+  verbose           = FALSE,
+  control.compute   = list(config = TRUE, dic = TRUE, cpo = TRUE),
+  control.inla      = list(strategy = "laplace", npoints = 21)
+)
+
+# Save fitted model to disk so it does not need to be re-run each session
+save(model.inla, file = "st_model_GAMMA.RData")
+
+# Print the INLA model summary
+summary(model.inla)
+```
+
+---
+
+# Results: Spatial Effects
+
+## Extract Posterior Means
+
+```{r extract-spatial}
+# Exponentiate posterior means to obtain relative risks (RR > 1 = elevated risk)
+kenya.one$SHARED_C    <- exp(model.inla$summary.random$sp.dum[,   "mean"])
+kenya.one$HIV_C       <- exp(model.inla$summary.random$sp.idx1[,  "mean"])
+kenya.one$TB_C        <- exp(model.inla$summary.random$sp.idx2[,  "mean"])
+
+# Combined spatial effect = disease-specific + scaled shared component
+kenya.one$Total.HIV_C <- exp(model.inla$summary.random$sp.idx1[, "mean"] +
+                              model.inla$summary.random$sp.1[,    "mean"])
+kenya.one$Total.TB_C  <- exp(model.inla$summary.random$sp.idx2[, "mean"] +
+                              model.inla$summary.random$sp.2[,    "mean"])
+```
+
+## Classify Spatial RRs into Categories
+
+```{r classify-spatial}
+# Breakpoints for spatial RR maps (note: upper bound is 1.00, not 0.90)
+spatial.breaks <- c(0, 0.40, 0.70, 1.00, 6)
+spatial.labels <- c("0.00-0.40", "0.41-0.70", "0.71-1.00", ">1.00")
+
+classify_rr <- function(x) {
+  cut(x, breaks = spatial.breaks, include.lowest = TRUE, labels = spatial.labels)
+}
+
+kenya.one$SHARED   <- classify_rr(kenya.one$SHARED_C)
+kenya.one$HIV      <- classify_rr(kenya.one$HIV_C)
+kenya.one$TB       <- classify_rr(kenya.one$TB_C)
+kenya.one$Total.HIV <- classify_rr(kenya.one$Total.HIV_C)
+kenya.one$Total.TB  <- classify_rr(kenya.one$Total.TB_C)
+```
+
+## Disease-Specific and Shared Spatial Effects
+
+```{r spatial-effects-map, fig.cap="Figure 3. Posterior mean spatial relative risks: shared component (left), HIV-specific (centre), TB-specific (right)."}
+grid.arrange(
+  spplot(kenya.one, zcol = "SHARED", col.regions = my.palette.yor,
+         colorkey = list(space = "right", height = 1.0), cuts = 2,
+         main = "Shared", par.settings = list(fontsize = list(text = 12))),
+  spplot(kenya.one, zcol = "HIV",    col.regions = my.palette.yor,
+         colorkey = list(space = "right", height = 1.0), cuts = 2,
+         main = "HIV",    par.settings = list(fontsize = list(text = 12))),
+  spplot(kenya.one, zcol = "TB",     col.regions = my.palette.yor,
+         colorkey = list(space = "right", height = 1.0), cuts = 2,
+         main = "TB",     par.settings = list(fontsize = list(text = 12))),
+  ncol = 3
+)
+```
+
+## Combined (Total) Spatial Patterns
+
+```{r total-spatial-map, fig.cap="Figure 4. Combined county-level spatial relative risks (disease-specific + shared components): HIV (left) and TB (right)."}
+grid.arrange(
+  spplot(kenya.one, zcol = "Total.HIV", col.regions = my.palette.yor,
+         colorkey = list(space = "right", height = 1.0), cuts = 6,
+         main = "HIV: Combined Spatial Pattern",
+         par.settings = list(fontsize = list(text = 12))),
+  spplot(kenya.one, zcol = "Total.TB",  col.regions = my.palette.yor,
+         colorkey = list(space = "right", height = 1.0), cuts = 5,
+         main = "TB: Combined Spatial Pattern",
+         par.settings = list(fontsize = list(text = 12))),
+  ncol = 2
+)
+```
+
+---
+
+# Results: Temporal Trends
+
+Temporal trends are displayed on the relative risk (RR) scale with 95%
+credible intervals (dashed lines).
+
+```{r temporal-trends, fig.cap="Figure 5. Temporal relative risks, 2012–2017. (a) Shared trend; (b) HIV-specific; (c) TB-specific; (d) Combined HIV and TB trends.", fig.height=8}
+# Helper: extract and exponentiate temporal posteriors
+get_temporal <- function(effect_name) {
+  sm <- model.inla$summary.random[[effect_name]]
+  list(
+    mean  = exp(sm[, "mean"]),
+    lower = exp(sm[, "0.025quant"]),
+    upper = exp(sm[, "0.975quant"])
+  )
+}
+
+shared_t  <- get_temporal("tm.dum")
+hiv_t     <- get_temporal("tm.idx1")
+tb_t      <- get_temporal("tm.idx2")
+
+# Combined trends: disease-specific + shared copy
+hiv_copy  <- model.inla$summary.random$tm.1
+tb_copy   <- model.inla$summary.random$tm.2
+
+hiv_comb <- list(
+  mean  = exp(model.inla$summary.random$tm.idx1[, "mean"]      + hiv_copy[, "mean"]),
+  lower = exp(model.inla$summary.random$tm.idx1[, "0.025quant"] + hiv_copy[, "0.025quant"]),
+  upper = exp(model.inla$summary.random$tm.idx1[, "0.975quant"] + hiv_copy[, "0.975quant"])
+)
+tb_comb <- list(
+  mean  = exp(model.inla$summary.random$tm.idx2[, "mean"]      + tb_copy[, "mean"]),
+  lower = exp(model.inla$summary.random$tm.idx2[, "0.025quant"] + tb_copy[, "0.025quant"]),
+  upper = exp(model.inla$summary.random$tm.idx2[, "0.975quant"] + tb_copy[, "0.975quant"])
+)
+
+# Helper: draw one temporal trend panel
+plot_trend <- function(y_mean, y_lower, y_upper,
+                       ylim, main_title, panel_label,
+                       line_col = "black") {
+  plot(years, y_mean,
+       ylim  = ylim,  type  = "l",
+       main  = main_title, xlab = panel_label, ylab = "",
+       frame = FALSE, col  = line_col, lty = 1, lwd = 2,
+       cex.lab = 1.2)
+  title(ylab = "Relative Risk", line = 1.9, cex.lab = 1.2)
+  lines(years, y_lower, col = line_col, lty = 3, lwd = 0.5)
+  lines(years, y_upper, col = line_col, lty = 3, lwd = 0.5)
+}
+
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+
+# (a) Shared temporal trend
+plot_trend(shared_t$mean, shared_t$lower, shared_t$upper,
+           ylim = c(0.0, 2.0),
+           main_title = "Shared Temporal Trend", panel_label = "(a)")
+
+# (b) HIV-specific temporal trend
+plot_trend(hiv_t$mean, hiv_t$lower, hiv_t$upper,
+           ylim = c(0.8, 1.2),
+           main_title = "HIV Temporal Trend", panel_label = "(b)",
+           line_col = "red")
+
+# (c) TB-specific temporal trend
+plot_trend(tb_t$mean, tb_t$lower, tb_t$upper,
+           ylim = c(0.8, 1.2),
+           main_title = "TB Temporal Trend", panel_label = "(c)",
+           line_col = "blue")
+
+# (d) Combined temporal trends (HIV and TB overlaid)
+plot_trend(hiv_comb$mean, hiv_comb$lower, hiv_comb$upper,
+           ylim = c(0.5, 1.6),
+           main_title = "Combined Temporal Trend", panel_label = "(d)",
+           line_col = "red")
+lines(years, tb_comb$mean,  col = "blue", lty = 1, lwd = 2)
+lines(years, tb_comb$lower, col = "blue", lty = 3, lwd = 0.5)
+lines(years, tb_comb$upper, col = "blue", lty = 3, lwd = 0.5)
+legend(2012, 1.6, legend = c("HIV", "TB"),
+       col = c("red", "blue"), lwd = 2, lty = 1, cex = 0.8)
+
+par(mfrow = c(1, 1))   # Reset layout
+```
+
+---
+
+# Results: Space-Time Interaction
+
+The shared space-time interaction captures residual county-year heterogeneity
+not explained by the main spatial or temporal effects.
+
+## Extract Posterior Means
+
+```{r space-time-posterior}
+# Posterior means of the shared space-time random effect (delta)
+# Returns a 47 x 6 matrix (counties x years), filled column-by-column.
+delta_s_vec <- model.inla$summary.random$sp.tm.dum[, "mean"]
+
+delta.matrix_s         <- matrix(delta_s_vec, nrow = n_counties, ncol = length(years),
+                                 byrow = FALSE)
+rownames(delta.matrix_s) <- data.kenya$COUNTY
+colnames(delta.matrix_s) <- years
+
+cat("Space-time interaction matrix (first 5 counties):\n")
+print(round(delta.matrix_s[1:5, ], 4))
+```
+
+## Exceedance Probabilities P(δ > 0 | data)
+
+For each county-year cell, we compute the posterior probability that the
+shared space-time interaction is positive (i.e. RR > 1), providing a
+formal measure of excess risk.
+
+```{r exceedance-prob}
+# Compute P(delta_st > 0 | data) for each county-year combination.
+# inla.pmarginal returns P(delta <= 0), so we take 1 - P(delta <= 0).
+threshold <- 0   # H0: no excess risk (delta = 0 on log scale)
+
+pp.delta_s <- sapply(
+  model.inla$marginals.random[[9]],   # [[9]] = sp.tm.dum marginals
+  function(marg) 1 - inla.pmarginal(threshold, marg)
+)
+
+# Reshape into county x year matrix and classify into four probability bands
+pp.delta.matrix_s <- matrix(pp.delta_s, nrow = n_counties, ncol = length(years),
+                             byrow = FALSE)
+
+pp.breaks <- c(0, 0.25, 0.50, 0.75, Inf)
+pp.labels <- c("0.00-0.25", "0.26-0.50", "0.51-0.75", "0.76-1.00")
+
+# Build a data frame with one column per year (for merging with spatial object)
+pp.delta.factor_s <- data.frame(County = data.kenya$COUNTY)
+
+for (i in seq_along(years)) {
+  pp.col <- cut(pp.delta.matrix_s[, i],
+                breaks = pp.breaks, include.lowest = TRUE, labels = pp.labels)
+  pp.delta.factor_s[[paste0("X2", i + 11)]] <- pp.col   # X212 ... X217
+}
+
+cat("Exceedance probability data frame: ",
+    nrow(pp.delta.factor_s), "rows,", ncol(pp.delta.factor_s), "columns\n")
+```
+
+## Space-Time Interaction Maps
+
+```{r space-time-maps, fig.cap="Figure 6. Posterior probability P(shared space-time interaction > 0 | data) by county, 2012–2017. Values > 0.75 indicate strong evidence of excess county-year risk."}
+# Attach exceedance probability columns to the spatial object for plotting
+attr(kenya, "data") <- data.frame(data.kenya, pp.delta.factor_s)
+
+my.palette.ygn <- brewer.pal(4, "YlGn")
+
+pp_panels <- lapply(seq_along(years), function(i) {
+  zcol <- paste0("X2", i + 11)   # X212, X213, ..., X217
+  spplot(obj = kenya, zcol = zcol,
+         col.regions = my.palette.ygn, cuts = 2,
+         colorkey    = list(space = "right", height = 1.0),
+         main        = as.character(years[i]),
+         par.settings = list(fontsize = list(text = 12)))
+})
+
+do.call(grid.arrange, c(pp_panels, list(nrow = 2, ncol = 3)))
+```
+
+---
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
