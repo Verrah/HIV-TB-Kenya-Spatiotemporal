@@ -75,8 +75,8 @@ git clone https://github.com/YOUR-USERNAME/HIV-TB-Kenya-Spatiotemporal.git
 | Name | Affiliation | ORCID |
 |---|---|---|
 | Verrah A. Otiende | Pan African University, PAUSTI, Nairobi | [0000-0001-6147-3547](https://orcid.org/0000-0001-6147-3547) |
-| Thomas N. Achia | University of KwaZulu-Natal | — |
-| Henry G. Mwambi | University of KwaZulu-Natal | — |
+| Thomas N. Achia | University of KwaZulu-Natal | [0000-0002-0700-9468](https://orcid.org/0000-0002-0700-9468)|
+| Henry G. Mwambi | University of KwaZulu-Natal | [0000-0001-9654-400X](https://orcid.org/0000-0001-9654-400X) |
 
 ## Licence
 
