@@ -1,0 +1,648 @@
+\documentclass[10pt]{article}
+
+% ── Page geometry ─────────────────────────────────────────────────────────────
+\usepackage[
+  top=2.2cm, bottom=2.4cm,
+  left=1.8cm, right=1.8cm,
+  headheight=14pt
+]{geometry}
+
+% ── Core packages ─────────────────────────────────────────────────────────────
+\usepackage{paracol}          % two-column layout with different widths
+\usepackage{booktabs}         % professional table rules
+\usepackage{array}            % extended column types
+\usepackage{longtable}        % tables that span multiple pages
+\usepackage{rotating}         % sideways text for the article-type label
+\usepackage{marginnote}
+\usepackage{microtype}        % better typography
+\usepackage{parskip}          % no indent, space between paragraphs
+\usepackage{fancyhdr}         % header / footer
+\usepackage{titlesec}         % section heading styles
+\usepackage{mdframed}         % framed boxes (abstract box)
+\usepackage{enumitem}         % list control
+\usepackage{xcolor}           % colour (black/white only used)
+\usepackage{setspace}
+\usepackage{amsmath}
+\usepackage{ragged2e}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{hyperref}
+
+% ── Font: Helvetica (matches the sample's sans-serif body) ───────────────────
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+
+% ── Hyperref (plain, no colours) ─────────────────────────────────────────────
+\hypersetup{
+  colorlinks=false,
+  pdfborder={0 0 0},
+  pdftitle={Research Data Codebook --- HIV and TB Kenya},
+  pdfauthor={Otiende, Achia, Mwambi}
+}
+
+% ── Section heading styles (bold, flush left, smaller than default) ───────────
+\titleformat{\section}{\bfseries\normalsize}{\thesection.}{0.5em}{}[\vspace{-4pt}\rule{\linewidth}{0.4pt}]
+\titleformat{\subsection}{\bfseries\small}{}{0em}{}
+\titleformat{\subsubsection}{\bfseries\footnotesize\itshape}{}{0em}{}
+\titlespacing{\section}{0pt}{10pt}{4pt}
+\titlespacing{\subsection}{0pt}{6pt}{2pt}
+
+% ── Column ratio: 0.63 main | 0.37 sidebar ───────────────────────────────────
+\columnratio{0.63}
+
+% ── Header / footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\footnotesize\textit{Codebook --- HIV \& TB Spatio-Temporal Analysis, Kenya (2012--2017)}}
+\fancyhead[R]{\footnotesize\thepage}
+\fancyfoot[C]{\footnotesize ACM/IMS Journal of Data Science \quad|\quad
+  DOI: \texttt{10.1371/journal.pone.0234456}}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% ── Table utilities ───────────────────────────────────────────────────────────
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\captionsetup[table]{font=small, labelfont=bf, skip=4pt}
+
+% ── Sidebar helper: small text block ─────────────────────────────────────────
+\newcommand{\sideheading}[1]{%
+  {\bfseries\footnotesize #1}\par\vspace{2pt}}
+\newcommand{\sidebody}[1]{%
+  {\footnotesize\RaggedRight #1}\par\vspace{8pt}}
+
+% ── Inline code style ─────────────────────────────────────────────────────────
+\newcommand{\code}[1]{\texttt{\footnotesize #1}}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+% ── TOP RULE ─────────────────────────────────────────────────────────────────
+\noindent\rule{\linewidth}{1.2pt}
+\vspace{2pt}
+
+{\footnotesize\textit{Data Article}}
+\vspace{6pt}
+
+% ── TITLE ────────────────────────────────────────────────────────────────────
+{\Large\bfseries Research Data Codebook: Bayesian Joint Spatio-Temporal\\
+Modelling of HIV and Tuberculosis in Kenya, 2012--2017}
+
+\vspace{6pt}
+
+% ── AUTHORS ──────────────────────────────────────────────────────────────────
+{\small
+\textsc{Verrah A. Otiende},
+Pan African University Institute of Basic Sciences Technology and Innovation, Kenya\\
+\textsc{Thomas N. Achia},
+University of KwaZulu-Natal, South Africa\\
+\textsc{Henry G. Mwambi},
+University of KwaZulu-Natal, South Africa
+}
+
+\vspace{8pt}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{6pt}
+
+% ─────────────────────────────────────────────────────────────────────────────
+% BEGIN TWO-COLUMN LAYOUT
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{paracol}{2}
+
+%% ════════════════════════════════════════════════════════════
+%%  LEFT COLUMN — MAIN CONTENT
+%% ════════════════════════════════════════════════════════════
+
+% ── STRUCTURED ABSTRACT BOX ──────────────────────────────────────────────────
+\begin{mdframed}[
+  linewidth=0.4pt,
+  innerleftmargin=8pt, innerrightmargin=8pt,
+  innertopmargin=6pt,  innerbottommargin=6pt,
+  backgroundcolor=white
+]
+\textbf{Background.}
+This codebook documents all variables, data sources, derived measures, and
+analytical indices used in a Bayesian spatio-temporal joint disease modelling
+study of HIV and Tuberculosis (TB) co-morbidity across Kenya's 47 counties
+from 2012 to 2017.
+
+\vspace{4pt}
+\textbf{Data description.}
+Two CSV files (47 counties $\times$ 16 columns each) contain annual case
+notification counts and projected populations for HIV and TB. The analytical
+pipeline computes Standardised Incidence Ratios (SIRs) via indirect
+standardisation, fits a shared-component Poisson model in R-INLA, and
+extracts spatial, temporal, and space-time interaction effects.
+
+\vspace{4pt}
+\textbf{Reuse potential.}
+The data and code support reproduction of all figures and tables in the
+companion publication, and can be extended to other disease pairs or
+sub-national administrative units in Africa.
+\end{mdframed}
+
+\vspace{8pt}
+
+% ── SECTION 1: STUDY OVERVIEW ────────────────────────────────────────────────
+\section{Study Overview}
+
+\begin{tabular}{@{}L{2.8cm} L{7.0cm}@{}}
+\toprule
+\textbf{Attribute}       & \textbf{Detail} \\
+\midrule
+Study period             & 2012--2017 (6 annual time points) \\
+Geographic unit          & County (\(N = 47\)), Kenya \\
+Diseases modelled        & HIV, Tuberculosis (TB) \\
+Modelling framework      & Bayesian INLA, shared-component Poisson model \\
+Spatial structure        & Intrinsic CAR (Besag) on queen-contiguity graph \\
+Temporal structure       & First-order random walk \\
+Software                 & R (version $\geq$ 4.0), R-INLA \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 2: FILE INVENTORY ────────────────────────────────────────────────
+\section{File Inventory}
+
+\begin{tabular}{@{}L{3.8cm} L{1.2cm} L{5.4cm}@{}}
+\toprule
+\textbf{File} & \textbf{Format} & \textbf{Contents} \\
+\midrule
+\code{HIV\_Data\_2018.csv}
+  & CSV
+  & HIV case counts and projected populations by county, 2012--2017 \\[3pt]
+\code{TB\_Data\_2018.csv}
+  & CSV
+  & TB notification counts and projected populations by county, 2012--2017 \\[3pt]
+\code{population\_by\_county.docx}
+  & Word
+  & Annual county population projections (KNBS source) \\[3pt]
+\code{county\_codes.docx}
+  & Word
+  & County code reference list (codes 1--47 mapped to names) \\[3pt]
+\code{HIV\_TB\_Kenya\_Analysis.Rmd}
+  & R Markdown
+  & Fully documented analysis script with narrative, SIR computation, and INLA model \\[3pt]
+\code{County\_Kenya/County.shp}
+  & Shapefile
+  & Kenya county polygon boundaries (47 polygons) \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 3: TB DATASET VARIABLES ─────────────────────────────────────────
+\section{TB Dataset Variables (\texttt{TB\_Data\_2018.csv})}
+
+\textit{Unit of observation: one row per county (\(N = 47\)). All case counts are annual new TB notifications.}
+
+\vspace{4pt}
+
+\begin{tabular}{@{}L{2.0cm} L{1.0cm} L{0.8cm} L{5.6cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Type} & \textbf{Range} & \textbf{Description} \\
+\midrule
+\code{County\_ID}   & Int.    & 1--47   & Unique numeric code for each of Kenya's 47 counties. Links to \code{county\_codes.docx}. \\[3pt]
+\code{County}       & String  & ---     & Official county name as listed by KNBS. \\[3pt]
+\code{TB\_2012}     & Int.    & $\geq 0$ & New TB cases notified in 2012. \\[3pt]
+\code{PP\_2012}     & Int.    & $> 0$   & Projected mid-year population for 2012 (KNBS). \\[3pt]
+\code{TB\_2013}     & Int.    & $\geq 0$ & New TB cases for 2013. \\[3pt]
+\code{PP\_2013}     & Int.    & $> 0$   & Projected population for 2013. \\[3pt]
+\code{TB\_2014}     & Int.    & $\geq 0$ & New TB cases for 2014. \\[3pt]
+\code{PP\_2014}     & Int.    & $> 0$   & Projected population for 2014. \\[3pt]
+\code{TB\_2015}     & Int.    & $\geq 0$ & New TB cases for 2015. \\[3pt]
+\code{PP\_2015}     & Int.    & $> 0$   & Projected population for 2015. \\[3pt]
+\code{TB\_2016}     & Int.    & $\geq 0$ & New TB cases for 2016. \\[3pt]
+\code{PP\_2016}     & Int.    & $> 0$   & Projected population for 2016. \\[3pt]
+\code{TB\_2017}     & Int.    & $\geq 0$ & New TB cases for 2017. \\[3pt]
+\code{PP\_2017}     & Int.    & $> 0$   & Projected population for 2017. \\[3pt]
+\code{TB\_Total}    & Int.    & $\geq 0$ & Aggregate TB cases across all six years. \\[3pt]
+\code{PP\_Total}    & Int.    & $> 0$   & Sum of annual projected populations 2012--2017 (pooled denominator for overall SIR). \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 4: HIV DATASET VARIABLES ─────────────────────────────────────────
+\section{HIV Dataset Variables (\texttt{HIV\_Data\_2018.csv})}
+
+\textit{Unit of observation: one row per county (\(N = 47\)). Counts represent new HIV diagnoses.}
+
+\vspace{4pt}
+
+\begin{tabular}{@{}L{2.0cm} L{1.0cm} L{0.8cm} L{5.6cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Type} & \textbf{Range} & \textbf{Description} \\
+\midrule
+\code{Sn.no}        & Int.    & 1--47    & County serial number. Identical to \code{County\_ID} in the TB file. \\[3pt]
+\code{County}       & String  & ---      & Official county name. \\[3pt]
+\code{HIV\_2012}    & Int.    & $\geq 0$ & New HIV diagnoses in 2012. \\[3pt]
+\code{PP\_2012}     & Int.    & $> 0$    & Projected population for 2012 (KNBS). \\[3pt]
+\code{HIV\_2013}    & Int.    & $\geq 0$ & New HIV diagnoses for 2013. \\[3pt]
+\code{PP\_2013}     & Int.    & $> 0$    & Projected population for 2013. \\[3pt]
+\code{HIV\_2014}    & Int.    & $\geq 0$ & New HIV diagnoses for 2014. \\[3pt]
+\code{PP\_2014}     & Int.    & $> 0$    & Projected population for 2014. \\[3pt]
+\code{HIV\_2015}    & Int.    & $\geq 0$ & New HIV diagnoses for 2015. \\[3pt]
+\code{PP\_2015}     & Int.    & $> 0$    & Projected population for 2015. \\[3pt]
+\code{HIV\_2016}    & Int.    & $\geq 0$ & New HIV diagnoses for 2016. \\[3pt]
+\code{PP\_2016}     & Int.    & $> 0$    & Projected population for 2016. \\[3pt]
+\code{HIV\_2017}    & Int.    & $\geq 0$ & New HIV diagnoses for 2017. \\[3pt]
+\code{PP\_2017}     & Int.    & $> 0$    & Projected population for 2017. \\[3pt]
+\code{HIV\_Total}   & Int.    & $\geq 0$ & Aggregate HIV cases across all six years. \\[3pt]
+\code{PP\_Total}    & Int.    & $> 0$    & Sum of annual projected populations 2012--2017. \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 5: COUNTY REFERENCE ──────────────────────────────────────────────
+\section{County Code Reference}
+
+\textit{All 47 counties of Kenya with numeric codes used throughout the datasets and model output.}
+
+\vspace{4pt}
+
+\begin{tabular}{@{}C{0.6cm} L{3.0cm} C{0.6cm} L{3.0cm} C{0.6cm} L{2.8cm}@{}}
+\toprule
+\textbf{ID} & \textbf{County} & \textbf{ID} & \textbf{County} & \textbf{ID} & \textbf{County} \\
+\midrule
+1  & Turkana       & 17 & Meru          & 33 & Nyamira \\
+2  & Marsabit      & 18 & Nandi         & 34 & Narok \\
+3  & Mandera       & 19 & Siaya         & 35 & Kisii \\
+4  & Wajir         & 20 & Nakuru        & 36 & Murang'a \\
+5  & West Pokot    & 21 & Vihiga        & 37 & Migori \\
+6  & Samburu       & 22 & Nyandarua     & 38 & Kiambu \\
+7  & Isiolo        & 23 & Tharaka       & 39 & Machakos \\
+8  & Baringo       & 24 & Kericho       & 40 & Kajiado \\
+9  & Keiyo-Marakwet& 25 & Kisumu        & 41 & Nairobi \\
+10 & Trans Nzoia   & 26 & Nyeri         & 42 & Makueni \\
+11 & Bungoma       & 27 & Tana River    & 43 & Lamu \\
+12 & Garissa       & 28 & Kitui         & 44 & Kilifi \\
+13 & Uasin Gishu   & 29 & Kirinyaga     & 45 & Taita Taveta \\
+14 & Kakamega      & 30 & Embu          & 46 & Kwale \\
+15 & Laikipia      & 31 & Homa Bay      & 47 & Mombasa \\
+16 & Busia         & 32 & Bomet         &    & \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 6: DERIVED VARIABLES ─────────────────────────────────────────────
+\section{Derived Variables and Intermediate Calculations}
+
+All quantities below are computed at runtime in \code{HIV\_TB\_Kenya\_Analysis.Rmd}
+and are not stored in the CSV files.
+
+\subsection{Standard Populations}
+
+The standard population for each county is the average annual projected
+population over the six study years, computed as
+\(\bar{P}_i = P_{i,\mathrm{Total}} / 6\). It is used as the reference
+denominator in the expected count formula.
+
+\begin{tabular}{@{}L{2.8cm} L{2.2cm} L{4.4cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Formula} & \textbf{Description} \\
+\midrule
+\code{standard.HIV} & \code{PP\_Total / 6} & Average annual population from the HIV dataset (47-element vector). \\[3pt]
+\code{standard.TB}  & \code{PP\_Total / 6} & Average annual population from the TB dataset. \\
+\bottomrule
+\end{tabular}
+
+\subsection{National Crude Incidence Rates}
+
+\begin{tabular}{@{}L{2.8cm} L{3.8cm} L{2.8cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Formula} & \textbf{Description} \\
+\midrule
+\code{cruderate.HIV[y]} & \(\frac{\sum \mathrm{HIV}_y}{\sum \mathrm{PP}_y}\) & Annual crude HIV rate, \(y \in \{2012,\ldots,2017\}\). \\[4pt]
+\code{cruderate.HIV\_Total} & \(\frac{\sum \mathrm{HIV\_Total}}{\sum \mathrm{PP\_Total}}\) & Pooled HIV rate across all six years. \\[4pt]
+\code{cruderate.TB[y]} & \(\frac{\sum \mathrm{TB}_y}{\sum \mathrm{PP}_y}\) & Annual crude TB rate. \\[4pt]
+\code{cruderate.TB\_Total} & \(\frac{\sum \mathrm{TB\_Total}}{\sum \mathrm{PP\_Total}}\) & Pooled TB rate. \\
+\bottomrule
+\end{tabular}
+
+\subsection{Expected Counts (Indirect Standardisation)}
+
+\begin{tabular}{@{}L{2.8cm} L{3.8cm} L{2.8cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Formula} & \textbf{Description} \\
+\midrule
+\code{expected.HIV[,y]} & \(\bar{\lambda}^{\mathrm{HIV}}_y \times \bar{P}_i^{\mathrm{HIV}}\) & Expected HIV cases for county $i$, year $y$; 47$\times$6 matrix. \\[4pt]
+\code{expected.HIV\_Total} & \(\bar{\lambda}^{\mathrm{HIV}}_{\bullet} \times \bar{P}_i^{\mathrm{HIV}}\) & Pooled expected HIV cases. \\[4pt]
+\code{expected.TB[,y]} & \(\bar{\lambda}^{\mathrm{TB}}_y \times \bar{P}_i^{\mathrm{TB}}\) & Expected TB cases; 47$\times$6 matrix. \\[4pt]
+\code{expected.TB\_Total} & \(\bar{\lambda}^{\mathrm{TB}}_{\bullet} \times \bar{P}_i^{\mathrm{TB}}\) & Pooled expected TB cases. \\
+\bottomrule
+\end{tabular}
+
+\subsection{Standardised Incidence Ratios}
+
+The SIR compares observed to expected counts:
+\[
+\mathrm{SIR}_{iy} = \frac{O_{iy}}{E_{iy}}
+\]
+SIR $> 1$ indicates above-national-average burden; SIR $< 1$ is below average.
+
+\begin{tabular}{@{}L{2.4cm} L{3.0cm} L{4.0cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Formula} & \textbf{Description} \\
+\midrule
+\code{adj.HIV[,y]}   & \code{HIV\_y / expected.HIV[,y]} & County SIR for HIV, year $y$; 47$\times$6 matrix. \\[3pt]
+\code{adj.HIV.total} & \code{HIV\_Total / expected.HIV\_Total} & Pooled HIV SIR. \\[3pt]
+\code{adj.TB[,y]}    & \code{TB\_y / expected.TB[,y]} & County SIR for TB, year $y$. \\[3pt]
+\code{adj.TB.total}  & \code{TB\_Total / expected.TB\_Total} & Pooled TB SIR. \\
+\bottomrule
+\end{tabular}
+
+\subsection{SIR Categories for Choropleth Mapping}
+
+Continuous SIRs are discretised into four ordered categories using consistent
+breakpoints across all years and diseases:
+\(c = (0,\; 0.40,\; 0.70,\; 0.90,\; 6)\).
+
+\begin{tabular}{@{}L{2.0cm} L{2.0cm} L{5.4cm}@{}}
+\toprule
+\textbf{Label} & \textbf{SIR range} & \textbf{Interpretation} \\
+\midrule
+\texttt{0.00--0.40} & $[0,\,0.40]$  & Very low: county rate $<40\%$ of national average. \\[3pt]
+\texttt{0.41--0.70} & $(0.40,\,0.70]$ & Low burden. \\[3pt]
+\texttt{0.71--0.99} & $(0.70,\,0.90]$ & Moderate: approaching national average. \\[3pt]
+\texttt{1.00+}      & $> 0.90$        & High: at or above national average. \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 7: INLA MODEL ────────────────────────────────────────────────────
+\section{INLA Model: Data Structure and Index Variables}
+
+The joint Bayesian model uses a long-format data frame with
+$47 \times 6 \times 2 = 564$ rows (county $\times$ year $\times$ disease).
+
+\subsection{Long-Format Data Frame Variables}
+
+\begin{tabular}{@{}L{2.2cm} L{1.0cm} L{0.9cm} L{5.3cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Type} & \textbf{Range} & \textbf{Description} \\
+\midrule
+\code{County.ID}      & Int.   & 1--47       & County numeric identifier. \\[3pt]
+\code{Year}           & Int.   & 2012--2017  & Calendar year. \\[3pt]
+\code{County.Year.ID} & Int.   & 1--282      & Sequential county$\times$year index. \\[3pt]
+\code{Expected}       & Num.   & $> 0$       & Expected case count (Poisson offset). \\[3pt]
+\code{Observed}       & Int.   & $\geq 0$    & Observed new cases per county-year. \\[3pt]
+\code{Disease}        & Char.  & HIV/TB      & Disease label. \\[3pt]
+\code{sp.idx}         & Int.   & 1--47       & Spatial index for Besag CAR effects. \\[3pt]
+\code{tm.idx}         & Int.   & 1--6        & Temporal index ($\text{Year} - 2011$). \\[3pt]
+\code{sp.tm.idx}      & Int.   & 1--282      & Combined space-time index. \\[3pt]
+\code{dis.idx}        & Int.   & 1 or 2      & Disease indicator (1 = HIV, 2 = TB). \\[3pt]
+\code{intercept}      & Factor & 1 or 2      & Disease-specific intercept factor. \\
+\bottomrule
+\end{tabular}
+
+\subsection{Disease-Specific Index Variables (NA Structure)}
+
+INLA uses \texttt{NA} entries to restrict a random effect to one disease only.
+Shared effects carry a single index active for both diseases.
+
+\begin{tabular}{@{}L{2.0cm} L{2.0cm} L{5.4cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Active for} & \textbf{Description} \\
+\midrule
+\code{sp.idx1 / sp.1} & HIV rows only  & HIV-specific spatial index (NA for TB). \\[3pt]
+\code{sp.idx2 / sp.2} & TB rows only   & TB-specific spatial index (NA for HIV). \\[3pt]
+\code{sp.dum}         & Both           & Shared spatial field index (copy mechanism). \\[3pt]
+\code{tm.idx1 / tm.1} & HIV rows only  & HIV-specific temporal index. \\[3pt]
+\code{tm.idx2 / tm.2} & TB rows only   & TB-specific temporal index. \\[3pt]
+\code{tm.dum}         & Both           & Shared temporal field index. \\[3pt]
+\code{sp.tm.idx1}     & HIV rows only  & HIV space-time interaction index. \\[3pt]
+\code{sp.tm.idx2}     & TB rows only   & TB space-time interaction index. \\[3pt]
+\code{sp.tm.dum}      & Both           & Shared space-time field index. \\
+\bottomrule
+\end{tabular}
+
+\subsection{Adjacency Structures}
+
+\begin{tabular}{@{}L{2.4cm} L{2.2cm} L{4.8cm}@{}}
+\toprule
+\textbf{Object} & \textbf{Dimensions} & \textbf{Description} \\
+\midrule
+\code{w.sp} & $47\times 47$ & Binary queen-contiguity matrix from the county shapefile. Entry $(i,j)=1$ if counties share a boundary. \\[4pt]
+\code{w.tm} & $6\times 6$   & First-order random walk graph. Each year connected to immediate predecessor and successor only. \\[4pt]
+\code{kenya.graph} & Text file & INLA-format adjacency file written by \code{nb2INLA()}. \\
+\bottomrule
+\end{tabular}
+
+\subsection{Prior Specifications}
+
+\begin{tabular}{@{}L{2.8cm} L{2.4cm} L{4.2cm}@{}}
+\toprule
+\textbf{Prior} & \textbf{Parameters} & \textbf{Applied to} \\
+\midrule
+Log-Gamma on precision & shape $= 0.5$, rate $= 0.0005$ & All spatial (Besag), temporal (Besag), and space-time (IID) precision hyperparameters. \\[4pt]
+Normal on copy $\beta$ & $\mu = 0$, $\tau = 1/5.9$, range $\in (0,\infty)$ & Scaling coefficients for shared spatial (\code{prior.beta.s}), temporal (\code{prior.beta.t}), and space-time (\code{prior.beta.s.t}) copy effects. \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 8: MODEL OUTPUT ──────────────────────────────────────────────────
+\section{INLA Model Output Variables}
+
+\subsection{Spatial Random Effects (County-Level)}
+
+\begin{tabular}{@{}L{2.4cm} L{2.4cm} L{4.6cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Formula} & \textbf{Description} \\
+\midrule
+\code{SHARED\_C}   & $\exp(\hat{u}_{\mathrm{shared},i})$ & Shared spatial relative risk. Values $>1$ indicate shared elevated risk for both diseases. \\[4pt]
+\code{HIV\_C}      & $\exp(\hat{u}_{\mathrm{HIV},i})$    & HIV-specific spatial RR (residual after shared component). \\[4pt]
+\code{TB\_C}       & $\exp(\hat{u}_{\mathrm{TB},i})$     & TB-specific spatial RR. \\[4pt]
+\code{Total.HIV\_C}& $\exp(\hat{u}_{\mathrm{HIV},i} + \hat{u}_{\mathrm{copy,HIV},i})$ & Combined HIV spatial RR (specific + scaled shared). \\[4pt]
+\code{Total.TB\_C} & $\exp(\hat{u}_{\mathrm{TB},i} + \hat{u}_{\mathrm{copy,TB},i})$  & Combined TB spatial RR. \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+Categorical versions (\code{SHARED}, \code{HIV}, \code{TB}, \code{Total.HIV},
+\code{Total.TB}) use breakpoints $(0, 0.40, 0.70, 1.00, 6)$ with labels
+\texttt{0.00--0.40}, \texttt{0.41--0.70}, \texttt{0.71--1.00}, \texttt{>1.00}.
+
+\subsection{Temporal Random Effects (Year-Level)}
+
+\begin{tabular}{@{}L{2.8cm} L{6.6cm}@{}}
+\toprule
+\textbf{Effect} & \textbf{Description} \\
+\midrule
+Shared temporal trend (\code{tm.dum}) & Common temporal change in risk for both diseases. Extracted as posterior mean and 95\% credible interval; plotted on RR scale 2012--2017. \\[4pt]
+HIV temporal trend (\code{tm.idx1})   & HIV-specific temporal departure from shared trend. \\[4pt]
+TB temporal trend (\code{tm.idx2})    & TB-specific temporal departure from shared trend. \\[4pt]
+HIV combined temporal (\code{tm.idx1 + tm.1}) & Total HIV temporal effect: disease-specific plus scaled shared copy. \\[4pt]
+TB combined temporal (\code{tm.idx2 + tm.2})  & Total TB temporal effect. \\
+\bottomrule
+\end{tabular}
+
+\subsection{Space-Time Interaction (County $\times$ Year, Shared)}
+
+\begin{tabular}{@{}L{2.8cm} L{6.6cm}@{}}
+\toprule
+\textbf{Variable} & \textbf{Description} \\
+\midrule
+\code{delta.matrix\_s} & $47 \times 6$ matrix of posterior mean shared space-time interaction effects (log scale). Rows = counties; columns = years. \\[4pt]
+\code{pp.delta\_s} & Exceedance probability $P(\delta_{it} > 0 \mid \mathbf{y})$ for each county-year cell, computed via \code{inla.pmarginal()}. \\[4pt]
+\code{pp.delta.factor\_s} & Categorical exceedance probability (four bands: 0.00--0.25, 0.26--0.50, 0.51--0.75, 0.76--1.00) used for choropleth mapping. \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+
+% ── SECTION 9: NOTES ─────────────────────────────────────────────────────────
+\section{Data Notes and Caveats}
+
+\textbf{Row ordering.} CSV files are sorted alphabetically by county name, not
+by \code{County\_ID}. The R script uses \code{match()} on the shapefile's
+\texttt{COUNTY} field to reorder rows before merging.
+
+\textbf{Column name discrepancy.} The HIV dataset uses \code{Sn.no} as the
+county identifier; the TB dataset uses \code{County\_ID}. Both represent
+the same codes (1--47) and are interchangeable in joins.
+
+\textbf{Pooled denominator.} \code{PP\_Total} is the sum of six annual
+populations (total person-years), not a single-year estimate. Use with
+caution when computing point-in-time rates.
+
+\textbf{INLA indexing.} All indices must be positive integers starting at 1.
+The temporal index maps $\text{tm.idx} = \text{Year} - 2011$ so that
+$2012 \mapsto 1$ and $2017 \mapsto 6$.
+
+\textbf{Copy betas.} A copy-effect $\beta > 0$ indicates positive spatial or
+temporal association between diseases; $\beta$ close to 0 indicates little
+shared pattern. Range is constrained to $(0, \infty)$ in the prior.
+
+\vspace{4pt}
+\noindent\rule{\linewidth}{0.4pt}
+
+%% ════════════════════════════════════════════════════════════
+%%  RIGHT COLUMN — SIDEBAR
+%% ════════════════════════════════════════════════════════════
+\switchcolumn
+
+\vspace{4pt}
+
+\sideheading{Code and data links:}
+\sidebody{%
+  \url{https://github.com/[username]/HIV-TB-Kenya-Spatiotemporal}\\[2pt]
+  \url{https://doi.org/10.5281/zenodo.19673471}
+}
+
+\sideheading{Published article:}
+\sidebody{%
+  \textit{PLOS ONE}, 15(7), e0234456 (2020)\\
+  \url{https://doi.org/10.1371/journal.pone.0234456}
+}
+
+\sideheading{Keywords:}
+\sidebody{%
+  Bayesian hierarchical model,
+  spatio-temporal analysis,
+  HIV, Tuberculosis,
+  joint disease modelling,
+  Kenya, R-INLA,
+  shared-component model,
+  Standardised Incidence Ratio
+}
+
+\sideheading{Author contributions:}
+\sidebody{%
+  VAO conceived, designed, and conducted the analysis, and wrote the first draft.
+  TNA and HGM supervised the methodology and contributed to data curation and
+  manuscript revision. All authors approved the final version.
+}
+
+\sideheading{Authors' contact information:}
+\sidebody{%
+  \textbf{Verrah A. Otiende},
+  Pan African University PAUSTI, Nairobi, Kenya.\\
+  \textit{verrahodhiambo@gmail.com}\\
+  ORCID: 0000-0001-6147-3547\\[6pt]
+  \textbf{Thomas N. Achia},
+  University of KwaZulu-Natal, Pietermaritzburg, South Africa.\\
+  ORCID: 0000-0002-0700-9468\\[6pt]
+  \textbf{Henry G. Mwambi},
+  University of KwaZulu-Natal, Pietermaritzburg, South Africa.
+}
+
+\vspace{8pt}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{4pt}
+
+\sideheading{Data sources:}
+\sidebody{%
+  \textbf{HIV/TB cases:} Kenya Ministry of Health, National Disease
+  Surveillance Programme (NASCOP \& NLTP).\\[4pt]
+  \textbf{Population projections:} Kenya National Bureau of Statistics (KNBS).
+  P.O. Box 30266-00100, Nairobi. \url{www.knbs.or.ke}
+}
+
+\sideheading{Licence:}
+\sidebody{%
+  Creative Commons Attribution 4.0 International (CC BY 4.0), consistent with
+  the open access licence of the companion article.\\
+  \url{https://creativecommons.org/licenses/by/4.0/}
+}
+
+\sideheading{Citation:}
+\sidebody{%
+  Otiende VA, Achia TN, Mwambi HG (2020) Bayesian hierarchical modeling of
+  joint spatiotemporal risk patterns for HIV and TB in Kenya.
+  \textit{PLOS ONE} 15(7): e0234456.
+  \url{https://doi.org/10.1371/journal.pone.0234456}
+}
+
+\sideheading{BibTeX:}
+{\fontsize{6.5}{8}\selectfont\ttfamily
+\noindent @article\{otiende2020bayesian,\\
+\hspace*{6pt}author  = \{Otiende, V.A. and\\
+\hspace*{22pt}Achia, T.N. and\\
+\hspace*{22pt}Mwambi, H.G.\},\\
+\hspace*{6pt}title   = \{Bayesian hierarchical\\
+\hspace*{22pt}modeling \ldots\},\\
+\hspace*{6pt}journal = \{PLOS ONE\},\\
+\hspace*{6pt}volume  = \{15\},\\
+\hspace*{6pt}number  = \{7\},\\
+\hspace*{6pt}pages   = \{e0234456\},\\
+\hspace*{6pt}year    = \{2020\},\\
+\hspace*{6pt}doi     = \{10.1371/journal\\
+\hspace*{22pt}.pone.0234456\}\\
+\}
+}
+
+\vspace{8pt}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{4pt}
+
+\sideheading{Software requirements:}
+\sidebody{%
+  R $\geq$ 4.0; R-INLA (see \url{www.r-inla.org});\\
+  packages: \texttt{sp}, \texttt{sf}, \texttt{rgdal}, \texttt{spdep},
+  \texttt{RColorBrewer}, \texttt{lattice}, \texttt{gridExtra},
+  \texttt{epitools}, \texttt{DCluster}, \texttt{knitr}.
+}
+
+\sideheading{Reproduction steps:}
+\sidebody{%
+  1. Clone the GitHub repository.\\
+  2. Place data files in the \texttt{data/} folder.\\
+  3. Open \texttt{HIV\_TB\_Kenya\_Analysis.Rmd} in RStudio.\\
+  4. Click \textbf{Knit} or run \texttt{rmarkdown::render()}.\\
+  \textit{Note:} The INLA model chunk is cached. First run takes
+  approximately 20--40 minutes.
+}
+
+\end{paracol}
+
+\end{document}
