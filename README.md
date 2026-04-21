@@ -1,7 +1,7 @@
 # Bayesian Joint Spatio-Temporal Modelling of HIV and TB in Kenya (2012–2017)
 
 [![DOI](https://img.shields.io/badge/DOI-10.1371%2Fjournal.pone.0234456-blue)](https://doi.org/10.1371/journal.pone.0234456)
-[![Zenodo](https://zenodo.org/badge/DOI/10.5281/zenodo.19674273.svg)](https://doi.org/10.5281/zenodo.19674273)
+[![Zenodo](https://zenodo.org/badge/DOI/10.5281/zenodo.19680403.svg)](https://doi.org/10.5281/zenodo.19680403)
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 
 ## Publication
